@@ -1,0 +1,14 @@
+{
+  "users": {
+    "name": "users",
+    "columns": {
+      "id": { "name": "id", "data_type": "serial" },
+      "email": { "name": "email", "data_type": "varchar(150)" }
+    },
+    "constraints": {
+      "primary": ["id"],
+      "unique": [["email"]]
+    },
+    "indexes": [["email"]]
+  }
+}

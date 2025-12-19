@@ -1,0 +1,51 @@
+services:
+    node_a:
+        container_name: node_a
+        entrypoint:
+            - /scripts/entrypoint.sh
+            - node_a
+        environment:
+            POSTGRES_DB: store
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+        image: postgres:16
+        ports:
+            - 5433:5432
+        volumes:
+            - node_a_data:/var/lib/postgresql/data
+            - ./:/scripts
+    node_b:
+        container_name: node_b
+        entrypoint:
+            - /scripts/entrypoint.sh
+            - node_b
+        environment:
+            POSTGRES_DB: store
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+        image: postgres:16
+        ports:
+            - 5434:5432
+        volumes:
+            - node_b_data:/var/lib/postgresql/data
+            - ./:/scripts
+    node_c:
+        container_name: node_c
+        entrypoint:
+            - /scripts/entrypoint.sh
+            - node_c
+        environment:
+            POSTGRES_DB: store
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+        image: postgres:16
+        ports:
+            - 5435:5432
+        volumes:
+            - node_c_data:/var/lib/postgresql/data
+            - ./:/scripts
+version: "3.9"
+volumes:
+    node_a_data: {}
+    node_b_data: {}
+    node_c_data: {}

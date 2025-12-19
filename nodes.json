@@ -1,0 +1,20 @@
+[
+  {
+    "name": "node_a",
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_b",
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_c",
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  }
+]
