@@ -3,10 +3,10 @@ package dockercomposegenerator
 import (
 	"encoding/json"
 	"fmt"
-	schema "jsonddl/internal"
-	helper "jsonddl/internal/util"
 	"log"
 	"os"
+	schema "pgconverge/internal"
+	helper "pgconverge/internal/util"
 
 	"gopkg.in/yaml.v3"
 )

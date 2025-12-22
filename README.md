@@ -1,6 +1,6 @@
-# About JsonDDL
+# About pgconverge
 
-**JsonDDL** is a powerful tool for converting JSON-defined database schemas into deterministic SQL DDL statements, with full support for **multidirectional replication**. It allows developers and teams to manage database schema changes in a structured, predictable, and reversible way.
+**pgconverge** is a powerful tool for converting JSON-defined database schemas into deterministic SQL DDL statements, with full support for **multidirectional replication**. It allows developers and teams to manage database schema changes in a structured, predictable, and reversible way.
 
 ## Key Features
 
@@ -10,9 +10,9 @@
 * **Schema Diffing**: Detect changes between JSON schemas and generate SQL to apply or revert updates.
 * **Multi-Database Ready**: Works with PostgreSQL and easily extendable to other relational databases.
 
-## Why JsonDDL?
+## Why pgconverge?
 
-Managing database schemas across distributed systems can be error-prone. JsonDDL makes it easier to:
+Managing database schemas across distributed systems can be error-prone. pgconverge makes it easier to:
 
 * Keep your database schemas in version control.
 * Automate schema migrations and replication-safe updates.
@@ -21,5 +21,5 @@ Managing database schemas across distributed systems can be error-prone. JsonDDL
 ## Getting Started
 
 1. Define your schema in JSON.
-2. Run JsonDDL to generate SQL DDL statements.
+2. Run pgconverge to generate SQL DDL statements.
 3. Apply the generated SQL to your database nodes.

@@ -1,4 +1,4 @@
-module jsonddl
+module pgconverge
 
 go 1.25.5
 

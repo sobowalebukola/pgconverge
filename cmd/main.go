@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	compose "jsonddl/internal/dockerComposeGenerator"
-	generator "jsonddl/internal/sqlGenerator"
 	"os"
+	compose "pgconverge/internal/dockerComposeGenerator"
+	generator "pgconverge/internal/sqlGenerator"
 )
 
 func main() {

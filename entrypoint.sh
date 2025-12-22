@@ -139,44 +139,18 @@ echo "========================================="
 
 # Display final replication status
 echo ""
-echo "📊 Subscriptions on $NODE_NAME (what we're receiving):"
+echo "Subscriptions on $NODE_NAME (what we're receiving):"
 psql -U "$POSTGRES_USER" -d "$DB_NAME" -c \
   "SELECT subname, subenabled, subslotname FROM pg_subscription ORDER BY subname;"
 
 echo ""
-echo "📊 Replication slots on $NODE_NAME (other nodes subscribing to us):"
+echo "Replication slots on $NODE_NAME (other nodes subscribing to us):"
 psql -U "$POSTGRES_USER" -d "$DB_NAME" -c \
   "SELECT slot_name, slot_type, active, temporary FROM pg_replication_slots ORDER BY slot_name;"
 
 echo ""
-echo "📊 Publications on $NODE_NAME (what we're publishing):"
+echo "Publications on $NODE_NAME (what we're publishing):"
 psql -U "$POSTGRES_USER" -d "$DB_NAME" -c \
   "SELECT pubname FROM pg_publication;"
 
 wait
-
-
-# docker exec node_a psql -U postgres -d mydb -c "INSERT INTO users (email) VALUES ('test@example.com');"
-# docker exec $node psql -U postgres -d mydb -c "SELECT * FROM users;"
-
-# psql -U postgres -d store -c "INSERT INTO users (email) VALUES ('iku@gmail.com')"
-# psql -U postgres -d store -c "SELECT * FROM users";
-#psql -U postgres -d store -c "UPDATE users set email = 'killer@gmail.com' where email='iku@gmail.com';"
-
-#psql -U postgres -d store -c "DELETE FROM users where email = 'iku@gmail.com';"
-
-# psql -U postgres -d store -c "CREATE TABLE IF NOT EXISTS "users" (
-#   "email" varchar(150),
-#   "id" uuid DEFAULT gen_random_uuid(),
-#   "updated_at" TIMESTAMP DEFAULT now(),
-#   "origin_node" VARCHAR(50) NOT NULL DEFAULT,
-#   PRIMARY KEY ("id"),
-#   UNIQUE ("email")
-# );"
-
-#
-
-#psql -U postgres -d store -c "INSERT INTO users (email, origin_node) VALUES ('iku@gmail.com', 'node_a')"
-psql -U postgres -d store -c "UPDATE users SET email = 'killer@gmail.com', origin_node = 'node_c', updated_at = 'NOW() ' WHERE email = 'iku@gmail.com'"
-psql -U postgres -d store -c "SELECT * FROM users where email = 'iku@gmail.com'";
-psql -U postgres -d store -c "DELETE FROM users where email = 'iku@gmail.com';"

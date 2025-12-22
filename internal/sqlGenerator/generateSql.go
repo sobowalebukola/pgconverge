@@ -3,10 +3,10 @@ package sqlgenerator
 import (
 	"encoding/json"
 	"fmt"
-	schema "jsonddl/internal"
-	helper "jsonddl/internal/util"
 	"log"
 	"os"
+	schema "pgconverge/internal"
+	helper "pgconverge/internal/util"
 	"strings"
 )
 
@@ -22,6 +22,8 @@ func SchemaGenerator() {
 	}
 
 	var sqlBuilder strings.Builder
+
+	sqlBuilder.WriteString(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";` + "\n")
 
 	for _, table := range tables {
 		cols := []string{}
@@ -70,7 +72,7 @@ func SchemaGenerator() {
 			))
 		}
 
-		sqlBuilder.WriteString(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`)
+		// sqlBuilder.WriteString(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`)
 
 		sqlBuilder.WriteString(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS "%s" (%s);`, table.Name, strings.Join(append(cols, constraints...), ",\n  ")))
 

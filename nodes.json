@@ -16,5 +16,17 @@
     "db": "store",
     "user": "postgres",
     "password": "postgres"
+  },
+  {
+    "name": "node_d",
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_e",
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
   }
 ]
