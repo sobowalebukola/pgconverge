@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	compose "pgconverge/internal/dockerComposeGenerator"
-	generator "pgconverge/internal/sqlGenerator"
+	compose "pgconverge/internal/dockercomposegenerator"
+	generator "pgconverge/internal/schemagenerator"
 )
 
 func main() {

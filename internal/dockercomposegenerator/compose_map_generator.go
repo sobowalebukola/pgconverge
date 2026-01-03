@@ -1,30 +1,13 @@
 package dockercomposegenerator
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
-	"os"
 	schema "pgconverge/internal"
 	helper "pgconverge/internal/util"
-
-	"gopkg.in/yaml.v3"
 )
 
-func ComposeGenerator() {
-
-	// --- Load nodes ---
-	nodesBytes, err := os.ReadFile("nodes.json")
-	if err != nil {
-		log.Fatal(err)
-	}
-	var nodes []schema.Node
-	if err := json.Unmarshal(nodesBytes, &nodes); err != nil {
-		log.Fatal(err)
-	}
-
+func GenerateComposeMap(nodes []schema.Node) map[string]interface{} {
 	compose := map[string]interface{}{
-		"version":  "3.9",
 		"services": map[string]interface{}{},
 		"volumes":  map[string]interface{}{},
 	}
@@ -50,9 +33,5 @@ func ComposeGenerator() {
 		volumes[node.Name+"_data"] = map[string]interface{}{}
 	}
 
-	yamlData, _ := yaml.Marshal(compose)
-	if err := os.WriteFile("docker-compose.yml", yamlData, 0644); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("docker-compose.yml generated")
+	return compose
 }
