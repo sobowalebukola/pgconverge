@@ -95,7 +95,7 @@ func SchemaGenerator() {
 				END;
 				$$ LANGUAGE plpgsql;
 
-				CREATE TRIGGER set_updated_at_%s
+				CREATE OR REPLACE TRIGGER set_updated_at_%s
 				BEFORE INSERT OR UPDATE ON %s
 				FOR EACH ROW EXECUTE FUNCTION %s_set_updated_at();
 
