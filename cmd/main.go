@@ -1,20 +1,25 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	compose "pgconverge/internal/dockercomposegenerator"
-	generator "pgconverge/internal/schemagenerator"
+	"flag"
+	"pgconverge/internal/dockercomposegenerator"
+	"pgconverge/internal/schemagenerator"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <current_node_name>")
-		os.Exit(1)
-	}
-	// Generate SQL from JSON schema
-	generator.SchemaGenerator()
+	schemaFile := flag.String("schema", "schema.json", "Path to schema JSON")
+	nodesFile := flag.String("nodes", "nodes.json", "Path to nodes JSON")
+	sqlOut := flag.String("out-sql", "generated.sql", "Output SQL file")
+	composeOut := flag.String("out-compose", "docker-compose.yml", "Output Docker Compose file")
+	onlySQL := flag.Bool("sql-only", false, "Generate only SQL")
+	onlyCompose := flag.Bool("compose-only", false, "Generate only Docker Compose")
+	flag.Parse()
 
-	// Generate Docker Compose yml file from available nodes
-	compose.ComposeGenerator()
+	if !*onlyCompose {
+		schemagenerator.SchemaGenerator(*schemaFile, *sqlOut)
+	}
+
+	if !*onlySQL {
+		dockercomposegenerator.ComposeGenerator(*nodesFile, *composeOut)
+	}
 }

@@ -8,8 +8,9 @@ import (
 	schema "pgconverge/internal"
 )
 
-func SchemaGenerator() {
-	schemaBytes, err := os.ReadFile("schema.json")
+func SchemaGenerator(filePath, outFile string) {
+
+	schemaBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -21,9 +22,9 @@ func SchemaGenerator() {
 
 	sql := GenerateSQL(tables)
 
-	if err := os.WriteFile("generated.sql", []byte(sql), 0644); err != nil {
+	if err := os.WriteFile(outFile, []byte(sql), 0644); err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("SQL generated in generated.sql")
+	fmt.Println("SQL generated in", outFile)
 }

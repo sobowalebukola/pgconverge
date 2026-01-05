@@ -10,8 +10,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func ComposeGenerator() {
-	nodesBytes, err := os.ReadFile("nodes.json")
+func ComposeGenerator(filePath, outFile string) {
+	nodesBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,8 +23,8 @@ func ComposeGenerator() {
 	compose := GenerateComposeMap(nodes)
 
 	yamlData, _ := yaml.Marshal(compose)
-	if err := os.WriteFile("docker-compose.yml", yamlData, 0644); err != nil {
+	if err := os.WriteFile(outFile, yamlData, 0644); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("docker-compose.yml generated")
+	fmt.Println("docker-compose.yml generated in", outFile)
 }
