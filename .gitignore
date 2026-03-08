@@ -1,2 +1,4 @@
 docker-compose.yml
 generated.sql
+pgconverge
+nodes-localhost.json

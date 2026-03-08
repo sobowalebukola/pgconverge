@@ -1,30 +1,35 @@
 [
   {
     "name": "node_a",
+    "host": "node_a",
     "db": "store",
     "user": "postgres",
     "password": "postgres"
   },
   {
     "name": "node_b",
+    "host": "node_b",
     "db": "store",
     "user": "postgres",
     "password": "postgres"
   },
   {
     "name": "node_c",
+    "host": "node_c",
     "db": "store",
     "user": "postgres",
     "password": "postgres"
   },
   {
     "name": "node_d",
+    "host": "node_d",
     "db": "store",
     "user": "postgres",
     "password": "postgres"
   },
   {
     "name": "node_e",
+    "host": "node_e",
     "db": "store",
     "user": "postgres",
     "password": "postgres"

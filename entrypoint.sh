@@ -14,6 +14,13 @@ DB_NAME=${DB_NAME%$'\0'}
 POSTGRES_USER=${POSTGRES_USER%$'\0'}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD%$'\0'}
 
+# --- Function to get host for a node ---
+get_host_for_node() {
+    local node=$1
+    local host=$(grep -zoP "\"name\"\s*:\s*\"$node\"[\s\S]*?\"host\"\s*:\s*\"\K[^\"]+" "$NODES_JSON")
+    echo "${host%$'\0'}"
+}
+
 # Export password globally so all commands use it automatically
 export PGPASSWORD=$POSTGRES_PASSWORD
 
@@ -34,16 +41,17 @@ if [ -z "$(ls -A "$PGDATA" 2>/dev/null)" ]; then
     other_nodes=$(grep -oP '"name"\s*:\s*"\K[^"]+' "$NODES_JSON" | grep -v "^$NODE_NAME$")
     
     for donor in $other_nodes; do
-        echo "   Checking if '$donor' is online..."
-        
+        donor_host=$(get_host_for_node "$donor")
+        echo "   Checking if '$donor' ($donor_host) is online..."
+
         # Check if donor is reachable
-        if pg_isready -h "$donor" -U "$POSTGRES_USER" -d "$DB_NAME" -t 2 >/dev/null 2>&1; then
-            echo " Found active donor: $donor. Starting Clone..."
-            
+        if pg_isready -h "$donor_host" -U "$POSTGRES_USER" -d "$DB_NAME" -t 2 >/dev/null 2>&1; then
+            echo " Found active donor: $donor ($donor_host). Starting Clone..."
+
             # --- EXECUTE CLONE ---
             # -X stream: Fetch WAL files for consistency
             # NO -R flag: We want a writeable DB
-            pg_basebackup -h "$donor" -U "$POSTGRES_USER" -D "$PGDATA" -X stream -v
+            pg_basebackup -h "$donor_host" -U "$POSTGRES_USER" -D "$PGDATA" -X stream -v
             
             # Fix permissions
             chown -R postgres:postgres "$PGDATA"
@@ -122,38 +130,39 @@ sleep 3
 # --- Create subscriptions for all other nodes ---
 for node in $nodes; do
   node=$(echo "$node" | xargs)
-  
+
   if [ "$node" = "$NODE_NAME" ]; then
     echo "⏭️  Skipping self-subscription to $node"
     continue
   fi
 
+  node_host=$(get_host_for_node "$node")
   pub_name="pub_$node"
   sub_name="sub_${NODE_NAME}_from_${node}"
 
   echo ""
   echo "========================================="
-  echo "Setting up: $NODE_NAME subscribes to $node"
+  echo "Setting up: $NODE_NAME subscribes to $node ($node_host)"
   echo "Subscription: $sub_name -> Publication: $pub_name"
   echo "========================================="
 
   # 1. Wait for Publisher
   retries=0
-  while ! pg_isready -h "$node" -U "$POSTGRES_USER" -d "$DB_NAME" >/dev/null 2>&1; do
+  while ! pg_isready -h "$node_host" -U "$POSTGRES_USER" -d "$DB_NAME" >/dev/null 2>&1; do
     retries=$((retries+1))
     if [ $retries -ge $MAX_RETRIES ]; then
-      echo "✗ ERROR: Publisher node $node not reachable after $MAX_RETRIES retries"
+      echo "✗ ERROR: Publisher node $node ($node_host) not reachable after $MAX_RETRIES retries"
       continue 2
     fi
-    echo "Waiting for publisher node $node to be ready ($retries/$MAX_RETRIES)..."
+    echo "Waiting for publisher node $node ($node_host) to be ready ($retries/$MAX_RETRIES)..."
     sleep $RETRY_DELAY
   done
-  
-  echo "✓ Publisher node $node is ready"
+
+  echo "✓ Publisher node $node ($node_host) is ready"
 
   # 2. Ensure Remote Slot Exists (Idempotent)
-  echo "Ensuring replication slot '$sub_name' exists on publisher '$node'..."
-  psql -h "$node" -U "$POSTGRES_USER" -d "$DB_NAME" -c "
+  echo "Ensuring replication slot '$sub_name' exists on publisher '$node' ($node_host)..."
+  psql -h "$node_host" -U "$POSTGRES_USER" -d "$DB_NAME" -c "
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '$sub_name') THEN
@@ -168,8 +177,8 @@ END
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_subscription WHERE subname = '$sub_name') THEN
-        CREATE SUBSCRIPTION $sub_name 
-        CONNECTION 'host=$node dbname=$DB_NAME user=$POSTGRES_USER password=$POSTGRES_PASSWORD' 
+        CREATE SUBSCRIPTION $sub_name
+        CONNECTION 'host=$node_host dbname=$DB_NAME user=$POSTGRES_USER password=$POSTGRES_PASSWORD'
         PUBLICATION $pub_name
         WITH (create_slot = false, slot_name = '$sub_name', enabled = true, copy_data = false, origin = 'none');
     ELSE

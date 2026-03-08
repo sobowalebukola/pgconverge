@@ -1,0 +1,42 @@
+[
+  {
+    "name": "node_a",
+    "host": "localhost",
+    "port": 5433,
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_b",
+    "host": "localhost",
+    "port": 5434,
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_c",
+    "host": "localhost",
+    "port": 5435,
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_d",
+    "host": "localhost",
+    "port": 5436,
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  },
+  {
+    "name": "node_e",
+    "host": "localhost",
+    "port": 5437,
+    "db": "store",
+    "user": "postgres",
+    "password": "postgres"
+  }
+]
