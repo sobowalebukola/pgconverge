@@ -4,9 +4,11 @@ package util
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 var (
+	mu          sync.Mutex
 	basePort    = 5432
 	portCounter = 0
 	portMap     = make(map[string]int)
@@ -33,6 +35,9 @@ func QuoteCols(cols []string) string {
 
 // GetPort returns a unique port for a node name.
 func GetPort(name string) int {
+	mu.Lock()
+	defer mu.Unlock()
+
 	if port, ok := portMap[name]; ok {
 		return port
 	}
@@ -45,6 +50,9 @@ func GetPort(name string) int {
 
 // ResetPorts resets the port counter (useful for testing).
 func ResetPorts() {
+	mu.Lock()
+	defer mu.Unlock()
+
 	portCounter = 0
 	portMap = make(map[string]int)
 }

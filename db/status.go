@@ -15,6 +15,7 @@ type NodeStatus struct {
 	External         bool
 	Reachable        bool
 	Error            error
+	Warnings         []string
 	Version          string
 	WalLevel         string
 	Publications     []PublicationInfo
@@ -68,51 +69,74 @@ func (m *DBManager) GetNodeStatus(ctx context.Context, node *schema.Node) NodeSt
 
 	// Get PostgreSQL version
 	var version string
-	err = pool.QueryRow(ctx, "SELECT version()").Scan(&version)
-	if err == nil {
+	if err := pool.QueryRow(ctx, "SELECT version()").Scan(&version); err != nil {
+		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query version: %v", err))
+	} else {
 		status.Version = version
 	}
 
 	// Get wal_level
 	var walLevel string
-	err = pool.QueryRow(ctx, "SHOW wal_level").Scan(&walLevel)
-	if err == nil {
+	if err := pool.QueryRow(ctx, "SHOW wal_level").Scan(&walLevel); err != nil {
+		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query wal_level: %v", err))
+	} else {
 		status.WalLevel = walLevel
 	}
 
 	// Get publications
-	rows, err := pool.Query(ctx, "SELECT pubname, puballtables FROM pg_publication")
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
+	pubRows, err := pool.Query(ctx, "SELECT pubname, puballtables FROM pg_publication")
+	if err != nil {
+		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query publications: %v", err))
+	} else {
+		defer pubRows.Close()
+		for pubRows.Next() {
 			var pub PublicationInfo
-			if err := rows.Scan(&pub.Name, &pub.AllTables); err == nil {
-				status.Publications = append(status.Publications, pub)
+			if err := pubRows.Scan(&pub.Name, &pub.AllTables); err != nil {
+				status.Warnings = append(status.Warnings, fmt.Sprintf("failed to scan publication: %v", err))
+				continue
 			}
+			status.Publications = append(status.Publications, pub)
+		}
+		if err := pubRows.Err(); err != nil {
+			status.Warnings = append(status.Warnings, fmt.Sprintf("error iterating publications: %v", err))
 		}
 	}
 
 	// Get subscriptions
-	rows, err = pool.Query(ctx, "SELECT subname, subenabled, subslotname FROM pg_subscription")
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
+	subRows, err := pool.Query(ctx, "SELECT subname, subenabled, subslotname FROM pg_subscription")
+	if err != nil {
+		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query subscriptions: %v", err))
+	} else {
+		defer subRows.Close()
+		for subRows.Next() {
 			var sub SubscriptionInfo
-			if err := rows.Scan(&sub.Name, &sub.Enabled, &sub.SlotName); err == nil {
-				status.Subscriptions = append(status.Subscriptions, sub)
+			if err := subRows.Scan(&sub.Name, &sub.Enabled, &sub.SlotName); err != nil {
+				status.Warnings = append(status.Warnings, fmt.Sprintf("failed to scan subscription: %v", err))
+				continue
 			}
+			status.Subscriptions = append(status.Subscriptions, sub)
+		}
+		if err := subRows.Err(); err != nil {
+			status.Warnings = append(status.Warnings, fmt.Sprintf("error iterating subscriptions: %v", err))
 		}
 	}
 
 	// Get replication slots
-	rows, err = pool.Query(ctx, "SELECT slot_name, slot_type, active FROM pg_replication_slots")
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
+	slotRows, err := pool.Query(ctx, "SELECT slot_name, slot_type, active FROM pg_replication_slots")
+	if err != nil {
+		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query replication slots: %v", err))
+	} else {
+		defer slotRows.Close()
+		for slotRows.Next() {
 			var slot ReplicationSlotInfo
-			if err := rows.Scan(&slot.Name, &slot.SlotType, &slot.Active); err == nil {
-				status.ReplicationSlots = append(status.ReplicationSlots, slot)
+			if err := slotRows.Scan(&slot.Name, &slot.SlotType, &slot.Active); err != nil {
+				status.Warnings = append(status.Warnings, fmt.Sprintf("failed to scan replication slot: %v", err))
+				continue
 			}
+			status.ReplicationSlots = append(status.ReplicationSlots, slot)
+		}
+		if err := slotRows.Err(); err != nil {
+			status.Warnings = append(status.Warnings, fmt.Sprintf("error iterating replication slots: %v", err))
 		}
 	}
 
@@ -139,6 +163,12 @@ func (m *DBManager) CheckReplicationHealth(ctx context.Context) (healthy bool, i
 			healthy = false
 			issues = append(issues, fmt.Sprintf("Node %s is not reachable: %v", status.Name, status.Error))
 			continue
+		}
+
+		if len(status.Warnings) > 0 {
+			for _, w := range status.Warnings {
+				issues = append(issues, fmt.Sprintf("Node %s: %s", status.Name, w))
+			}
 		}
 
 		if status.WalLevel != "logical" {

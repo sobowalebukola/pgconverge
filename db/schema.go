@@ -8,16 +8,26 @@ import (
 	"github.com/sobowalebukola/pgconverge/schema"
 )
 
-// ApplySchema applies SQL schema to a node.
+// ApplySchema applies SQL schema to a node within a transaction.
 func (m *DBManager) ApplySchema(ctx context.Context, node *schema.Node, schemaSQL string) error {
 	pool, err := m.Connect(ctx, node)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
 	}
 
-	_, err = pool.Exec(ctx, schemaSQL)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction on %s: %w", node.Name, err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, schemaSQL)
 	if err != nil {
 		return fmt.Errorf("failed to apply schema to %s: %w", node.Name, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit schema on %s: %w", node.Name, err)
 	}
 
 	return nil

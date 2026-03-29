@@ -1,7 +1,11 @@
 // Package schema provides types for PostgreSQL schema and node configuration.
 package schema
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"strings"
+)
 
 // Column represents a database column definition.
 type Column struct {
@@ -50,8 +54,19 @@ func (n *Node) GetPort() int {
 	return n.Port
 }
 
+// ResolvePassword returns the password for this node.
+// It checks the PGCONVERGE_<NODENAME>_PASSWORD environment variable first,
+// then falls back to the password field from the JSON configuration.
+func (n *Node) ResolvePassword() string {
+	envKey := fmt.Sprintf("PGCONVERGE_%s_PASSWORD", strings.ToUpper(n.Name))
+	if envPass := os.Getenv(envKey); envPass != "" {
+		return envPass
+	}
+	return n.Password
+}
+
 // ConnectionString returns a PostgreSQL connection string for the node.
 func (n *Node) ConnectionString() string {
 	return fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
-		n.Host, n.GetPort(), n.Database, n.User, n.Password)
+		n.Host, n.GetPort(), n.Database, n.User, n.ResolvePassword())
 }

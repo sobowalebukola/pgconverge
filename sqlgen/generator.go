@@ -83,6 +83,7 @@ func GenerateSQL(tables map[string]schema.Table) string {
 		}
 
 		// Conflict resolution & triggers
+		quotedName := fmt.Sprintf(`"%s"`, table.Name)
 		sqlBuilder.WriteString(fmt.Sprintf(`
 -- 1. Set replica identity
 ALTER TABLE %s REPLICA IDENTITY FULL;
@@ -99,11 +100,11 @@ CREATE OR REPLACE TRIGGER set_updated_at_%s
 BEFORE INSERT OR UPDATE ON %s
 FOR EACH ROW EXECUTE FUNCTION %s_set_updated_at();
 
--- 3. Resolve conflicts based on timestamp
+-- 3. Resolve conflicts: last-write-wins based on updated_at timestamp
 CREATE OR REPLACE FUNCTION %s_resolve_conflict() RETURNS TRIGGER AS $$
 BEGIN
 	IF TG_OP = 'UPDATE' THEN
-		IF NEW.updated_at > OLD.updated_at + interval '1 second' THEN
+		IF NEW.updated_at > OLD.updated_at THEN
 			RETURN NEW;
 		ELSE
 			RETURN NULL;
@@ -116,15 +117,21 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE TRIGGER conflict_resolution_%s
 BEFORE UPDATE ON %s
 FOR EACH ROW EXECUTE FUNCTION %s_resolve_conflict();
+
+-- Enable conflict resolution trigger for logical replication apply workers
+-- (replication workers run with session_replication_role='replica' which skips normal triggers)
+ALTER TABLE %s ENABLE ALWAYS TRIGGER conflict_resolution_%s;
 `,
+			quotedName,
+			table.Name,
+			table.Name,
+			quotedName,
 			table.Name,
 			table.Name,
 			table.Name,
+			quotedName,
 			table.Name,
-			table.Name,
-			table.Name,
-			table.Name,
-			table.Name,
+			quotedName,
 			table.Name,
 		))
 	}

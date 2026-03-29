@@ -43,6 +43,13 @@ var statusCmd = &cobra.Command{
 				fmt.Println("  Status: Online")
 				fmt.Printf("  WAL Level: %s\n", status.WalLevel)
 
+				if len(status.Warnings) > 0 {
+					fmt.Println("  Warnings:")
+					for _, w := range status.Warnings {
+						fmt.Printf("    - %s\n", w)
+					}
+				}
+
 				if len(status.Publications) > 0 {
 					fmt.Println("  Publications:")
 					for _, pub := range status.Publications {

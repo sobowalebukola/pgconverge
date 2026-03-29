@@ -17,6 +17,10 @@ type ReplicationResult struct {
 
 // CreatePublication creates a publication on a node.
 func (m *DBManager) CreatePublication(ctx context.Context, node *schema.Node) error {
+	if err := validateIdentifier(node.Name); err != nil {
+		return fmt.Errorf("invalid node name: %w", err)
+	}
+
 	pool, err := m.Connect(ctx, node)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", node.Name, err)
@@ -31,7 +35,7 @@ func (m *DBManager) CreatePublication(ctx context.Context, node *schema.Node) er
 			END IF;
 		END
 		$$;
-	`, pubName, pubName)
+	`, escapeLiteral(pubName), quoteIdentifier(pubName))
 
 	_, err = pool.Exec(ctx, query)
 	if err != nil {
@@ -43,11 +47,16 @@ func (m *DBManager) CreatePublication(ctx context.Context, node *schema.Node) er
 
 // CreateReplicationSlot creates a replication slot on a publisher node.
 func (m *DBManager) CreateReplicationSlot(ctx context.Context, publisherNode *schema.Node, slotName string) error {
+	if err := validateIdentifier(slotName); err != nil {
+		return fmt.Errorf("invalid slot name: %w", err)
+	}
+
 	pool, err := m.Connect(ctx, publisherNode)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", publisherNode.Name, err)
 	}
 
+	escapedSlot := escapeLiteral(slotName)
 	query := fmt.Sprintf(`
 		DO $$
 		BEGIN
@@ -56,7 +65,7 @@ func (m *DBManager) CreateReplicationSlot(ctx context.Context, publisherNode *sc
 			END IF;
 		END
 		$$;
-	`, slotName, slotName)
+	`, escapedSlot, escapedSlot)
 
 	_, err = pool.Exec(ctx, query)
 	if err != nil {
@@ -68,6 +77,13 @@ func (m *DBManager) CreateReplicationSlot(ctx context.Context, publisherNode *sc
 
 // CreateSubscription creates a subscription from subscriber to publisher.
 func (m *DBManager) CreateSubscription(ctx context.Context, subscriberNode, publisherNode *schema.Node) error {
+	if err := validateIdentifier(subscriberNode.Name); err != nil {
+		return fmt.Errorf("invalid subscriber node name: %w", err)
+	}
+	if err := validateIdentifier(publisherNode.Name); err != nil {
+		return fmt.Errorf("invalid publisher node name: %w", err)
+	}
+
 	pool, err := m.Connect(ctx, subscriberNode)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", subscriberNode.Name, err)
@@ -82,6 +98,9 @@ func (m *DBManager) CreateSubscription(ctx context.Context, subscriberNode, publ
 	}
 
 	// Then create the subscription on the subscriber
+	connStr := escapeLiteral(publisherNode.ConnectionString())
+	escapedSubName := escapeLiteral(subName)
+
 	query := fmt.Sprintf(`
 		DO $$
 		BEGIN
@@ -89,11 +108,11 @@ func (m *DBManager) CreateSubscription(ctx context.Context, subscriberNode, publ
 				CREATE SUBSCRIPTION %s
 				CONNECTION '%s'
 				PUBLICATION %s
-				WITH (create_slot = false, slot_name = '%s', enabled = true, copy_data = false, origin = 'none');
+				WITH (create_slot = false, slot_name = '%s', enabled = true, copy_data = true, origin = 'none');
 			END IF;
 		END
 		$$;
-	`, subName, subName, publisherNode.ConnectionString(), pubName, subName)
+	`, escapedSubName, quoteIdentifier(subName), connStr, quoteIdentifier(pubName), escapedSubName)
 
 	_, err = pool.Exec(ctx, query)
 	if err != nil {
