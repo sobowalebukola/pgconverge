@@ -99,12 +99,13 @@ fi
 MAX_RETRIES=20
 RETRY_DELAY=5
 
-# Start Postgres in background with dynamic limits and WAL safety
+# Start Postgres in background with dynamic limits, WAL safety, and node identity
 docker-entrypoint.sh postgres \
   -c wal_level=logical \
   -c "max_replication_slots=$SLOT_COUNT" \
   -c "max_wal_senders=$WAL_SENDERS" \
-  -c max_slot_wal_keep_size=1GB &
+  -c max_slot_wal_keep_size=1GB \
+  -c "pgconverge.node_name=$NODE_NAME" &
 
 # Wait for readiness
 until pg_isready -U "$POSTGRES_USER" -d "$DB_NAME"; do
@@ -127,10 +128,13 @@ echo ""
 # PHASE 3: LOGICAL REPLICATION SETUP
 # =================================================================
 
+# Set node identity at the database level so all sessions (including replication workers) inherit it
+psql -U "$POSTGRES_USER" -d "$DB_NAME" -c "ALTER DATABASE \"$DB_NAME\" SET pgconverge.node_name = '$NODE_NAME';"
+
 # Only run schema if we didn't clone (Cloning copies schema too)
 if [ "$CLONED_SUCCESSFULLY" != "true" ]; then
     echo "Applying schema to seed node..."
-    psql -U "$POSTGRES_USER" -d "$DB_NAME" -f /scripts/generated.sql || echo "Schema check skipped."
+    psql -U "$POSTGRES_USER" -d "$DB_NAME" -c "SET pgconverge.node_name = '$NODE_NAME'" -f /scripts/generated.sql || echo "Schema check skipped."
 fi
 
 # --- Create publication for THIS node ---
@@ -140,7 +144,7 @@ psql -U "$POSTGRES_USER" -d "$DB_NAME" -v pub_name="$PUB_NAME" <<'EOSQL'
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = :'pub_name') THEN
-        EXECUTE format('CREATE PUBLICATION %I FOR ALL TABLES', :'pub_name');
+        EXECUTE format('CREATE PUBLICATION %I FOR TABLES IN SCHEMA public', :'pub_name');
     END IF;
 END
 $$;

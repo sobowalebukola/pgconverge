@@ -31,7 +31,7 @@ func (m *DBManager) CreatePublication(ctx context.Context, node *schema.Node) er
 		DO $$
 		BEGIN
 			IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = '%s') THEN
-				CREATE PUBLICATION %s FOR ALL TABLES;
+				CREATE PUBLICATION %s FOR TABLES IN SCHEMA public;
 			END IF;
 		END
 		$$;

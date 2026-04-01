@@ -14,7 +14,7 @@ pgconverge sets up a **full-mesh multi-master** replication topology. Every node
      +--> node_c <---+
 ```
 
-Under the hood, it uses PostgreSQL's built-in **logical replication** (publications and subscriptions). Conflicts are resolved with a **last-write-wins** strategy based on the `updated_at` timestamp. Primary keys defined as `serial` are automatically converted to **UUIDs** to avoid cross-node collisions.
+Under the hood, it uses PostgreSQL's built-in **logical replication** (publications and subscriptions). Conflicts are resolved using either a simple **last-write-wins** strategy (based on `updated_at` timestamps) or a **Hybrid Logical Clock (HLC)** for tables that opt into CRDT mode. Primary keys defined as `serial` are automatically converted to **UUIDs** to avoid cross-node collisions.
 
 ### What Gets Generated
 
@@ -114,7 +114,10 @@ Create a `schema.json` file with your table definitions:
         }
       ]
     },
-    "indexes": [["user_id"], ["created_at"]]
+    "indexes": [["user_id"], ["created_at"]],
+    "crdt": {
+      "enabled": true
+    }
   }
 }
 ```
@@ -246,7 +249,13 @@ A map of table name to table definition:
         }
       ]
     },
-    "indexes": [["col_a"], ["col_b", "col_c"]]
+    "indexes": [["col_a"], ["col_b", "col_c"]],
+    "crdt": {
+      "enabled": true,
+      "columns": {
+        "col_name": { "type": "lww_field" }
+      }
+    }
   }
 }
 ```
@@ -254,10 +263,17 @@ A map of table name to table definition:
 **Automatic transformations applied during SQL generation:**
 
 - `serial` primary keys are converted to `uuid` with `gen_random_uuid()` default (prevents cross-node ID collisions)
-- An `updated_at TIMESTAMP DEFAULT now()` column is added to every table (used for conflict resolution)
+- An `updated_at TIMESTAMP DEFAULT now()` column is added to every table
 - An `origin_node VARCHAR(50)` column is added to every table (tracks which node originated the row)
 - `REPLICA IDENTITY FULL` is set on every table (required for logical replication)
 - A conflict resolution trigger is created for each table (last-write-wins based on `updated_at`)
+
+**Additional transformations for CRDT-enabled tables** (tables with `"crdt": {"enabled": true}`):
+
+- `_hlc_ts BIGINT`, `_hlc_counter INTEGER`, and `_hlc_node VARCHAR(50)` columns are added for HLC tracking
+- A shared `_pgconverge` schema is created with the HLC state table and `advance_hlc()` function
+- Conflict resolution uses the HLC tuple `(ts, counter, node)` instead of `updated_at` for deterministic total ordering
+- An HLC stamping trigger sets the clock values on local writes; replicated rows arrive with their origin's HLC values intact
 
 ### Password Management
 
@@ -377,13 +393,31 @@ node_c publishes  -> node_b subscribes (sub_node_b_from_node_c)
 
 ### Conflict Resolution
 
-When the same row is updated on two nodes simultaneously, the **last-write-wins** strategy applies:
+pgconverge supports two conflict resolution strategies, configurable per table:
+
+#### Timestamp-based Last-Write-Wins (default)
+
+For tables **without** CRDT enabled:
 
 - Every table has an `updated_at` column set to `NOW()` on each write
 - A `BEFORE UPDATE` trigger compares the incoming `updated_at` with the stored value
 - If the incoming timestamp is newer, the update is applied; otherwise it is discarded
 
 This means the node whose write happened later (by wall-clock time) wins. For this to work reliably, **node clocks should be synchronized** (e.g., via NTP).
+
+#### Hybrid Logical Clock (HLC) -- CRDT mode
+
+For tables with `"crdt": {"enabled": true}`:
+
+HLC combines physical wall-clock time with a logical counter to provide **causally consistent, deterministic ordering** without requiring perfectly synchronized clocks. Each write is stamped with an HLC tuple `(timestamp, counter, node_name)`:
+
+1. **Local writes**: the `stamp_hlc` trigger calls `_pgconverge.advance_hlc()` to advance the clock and stamps the row with the new HLC values. This trigger runs only for local writes (skipped by replication apply workers).
+2. **Replicated writes**: arrive with the origin node's HLC values already set. The `conflict_resolution` trigger (set to `ENABLE ALWAYS`) fires on all writes including replicated ones, and advances the local HLC to track the incoming timestamp for causal ordering.
+3. **Conflict resolution**: the HLC tuple `(ts, counter, node_name)` is compared lexicographically. The write with the higher tuple wins; the lower one is discarded.
+
+This gives a **total ordering** across all nodes. Since the node name acts as a tiebreaker, concurrent writes with identical physical timestamps are resolved deterministically rather than arbitrarily.
+
+**Node identity** is propagated via the `pgconverge.node_name` PostgreSQL GUC, set at the database level so all sessions (including replication apply workers) inherit it.
 
 ### Data Bootstrapping
 
