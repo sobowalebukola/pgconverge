@@ -273,7 +273,7 @@ A map of table name to table definition:
 - `_hlc_ts BIGINT`, `_hlc_counter INTEGER`, and `_hlc_node VARCHAR(50)` columns are added for HLC tracking
 - A shared `_pgconverge` schema is created with the HLC state table and `advance_hlc()` function
 - Conflict resolution uses the HLC tuple `(ts, counter, node)` instead of `updated_at` for deterministic total ordering
-- An HLC stamping trigger sets the clock values on local writes; replicated rows arrive with their origin's HLC values intact
+- An HLC stamping trigger (`a_stamp_hlc`) sets the clock values on local writes; a conflict resolution trigger (`z_resolve_conflict`) compares HLC tuples on all writes including replicated ones. Triggers are alphabetically prefixed to ensure correct execution order
 
 ### Password Management
 
@@ -411,9 +411,11 @@ For tables with `"crdt": {"enabled": true}`:
 
 HLC combines physical wall-clock time with a logical counter to provide **causally consistent, deterministic ordering** without requiring perfectly synchronized clocks. Each write is stamped with an HLC tuple `(timestamp, counter, node_name)`:
 
-1. **Local writes**: the `stamp_hlc` trigger calls `_pgconverge.advance_hlc()` to advance the clock and stamps the row with the new HLC values. This trigger runs only for local writes (skipped by replication apply workers).
-2. **Replicated writes**: arrive with the origin node's HLC values already set. The `conflict_resolution` trigger (set to `ENABLE ALWAYS`) fires on all writes including replicated ones, and advances the local HLC to track the incoming timestamp for causal ordering.
+1. **Local writes**: the `a_stamp_hlc` trigger calls `_pgconverge.advance_hlc()` to advance the clock and stamps the row with the new HLC values. This trigger runs only for local writes (skipped by replication apply workers).
+2. **Replicated writes**: arrive with the origin node's HLC values already set. The `z_resolve_conflict` trigger (set to `ENABLE ALWAYS`) fires on all writes including replicated ones, and advances the local HLC to track the incoming timestamp for causal ordering.
 3. **Conflict resolution**: the HLC tuple `(ts, counter, node_name)` is compared lexicographically. The write with the higher tuple wins; the lower one is discarded.
+
+Trigger names are alphabetically prefixed (`a_`, `z_`) because PostgreSQL fires `BEFORE` triggers in alphabetical order -- stamping must happen before conflict resolution.
 
 This gives a **total ordering** across all nodes. Since the node name acts as a tiebreaker, concurrent writes with identical physical timestamps are resolved deterministically rather than arbitrarily.
 

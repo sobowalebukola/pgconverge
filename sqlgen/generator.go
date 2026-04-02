@@ -248,11 +248,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER stamp_hlc_%s
+CREATE OR REPLACE TRIGGER a_stamp_hlc_%s
 BEFORE INSERT OR UPDATE ON %s
 FOR EACH ROW EXECUTE FUNCTION %s_stamp_hlc();
 
 -- HLC conflict resolution: fires on ALL writes including replicated (ENABLE ALWAYS)
+-- Trigger name prefixed with "z_" to ensure it fires AFTER the "a_stamp_hlc" trigger
+-- (PostgreSQL executes BEFORE triggers in alphabetical order)
 CREATE OR REPLACE FUNCTION %s_resolve_conflict() RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'UPDATE' THEN
@@ -270,11 +272,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER conflict_resolution_%s
+CREATE OR REPLACE TRIGGER z_resolve_conflict_%s
 BEFORE UPDATE ON %s
 FOR EACH ROW EXECUTE FUNCTION %s_resolve_conflict();
 
-ALTER TABLE %s ENABLE ALWAYS TRIGGER conflict_resolution_%s;
+ALTER TABLE %s ENABLE ALWAYS TRIGGER z_resolve_conflict_%s;
 `,
 		table.Name,
 		table.Name, q, table.Name,

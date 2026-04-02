@@ -28,6 +28,9 @@
         }
       ]
     },
-    "indexes": [["user_id"], ["created_at"]]
+    "indexes": [["user_id"], ["created_at"]],
+    "crdt": {
+      "enabled": true
+    }
   }
 }

@@ -296,7 +296,7 @@ func TestGenerateSQL_CRDT_HLCTriggers(t *testing.T) {
 	if !strings.Contains(sql, "orders_stamp_hlc()") {
 		t.Error("expected HLC stamping function")
 	}
-	if !strings.Contains(sql, "stamp_hlc_orders") {
+	if !strings.Contains(sql, "a_stamp_hlc_orders") {
 		t.Error("expected HLC stamping trigger")
 	}
 
@@ -314,12 +314,12 @@ func TestGenerateSQL_CRDT_HLCTriggers(t *testing.T) {
 	}
 
 	// ENABLE ALWAYS on conflict trigger
-	if !strings.Contains(sql, "ENABLE ALWAYS TRIGGER conflict_resolution_orders") {
+	if !strings.Contains(sql, "ENABLE ALWAYS TRIGGER z_resolve_conflict_orders") {
 		t.Error("conflict resolution trigger must use ENABLE ALWAYS")
 	}
 
 	// Stamping trigger should NOT be ENABLE ALWAYS
-	if strings.Contains(sql, "ENABLE ALWAYS TRIGGER stamp_hlc_orders") {
+	if strings.Contains(sql, "ENABLE ALWAYS TRIGGER a_stamp_hlc_orders") {
 		t.Error("HLC stamping trigger should NOT use ENABLE ALWAYS")
 	}
 }
@@ -373,7 +373,7 @@ func TestGenerateSQL_MixedCRDTAndNonCRDT(t *testing.T) {
 	}
 
 	// CRDT table uses HLC triggers
-	if !strings.Contains(sql, "crdt_table_stamp_hlc") {
+	if !strings.Contains(sql, "a_stamp_hlc_crdt_table") {
 		t.Error("CRDT table should have HLC stamping trigger")
 	}
 
