@@ -34,6 +34,11 @@ get_host_for_node() {
     echo "${host%$'\0'}"
 }
 
+# --- Escape single quotes for safe embedding in PL/pgSQL strings ---
+escape_sql_literal() {
+    echo "${1//\'/\'\'}"
+}
+
 # Export password globally so all commands use it automatically
 export PGPASSWORD="$POSTGRES_PASSWORD"
 
@@ -140,14 +145,14 @@ fi
 # --- Create publication for THIS node ---
 echo "Creating publication for $NODE_NAME..."
 PUB_NAME="pub_${NODE_NAME}"
-psql -U "$POSTGRES_USER" -d "$DB_NAME" -v pub_name="$PUB_NAME" <<'EOSQL'
-DO $$
+psql -U "$POSTGRES_USER" -d "$DB_NAME" <<EOSQL
+DO \$\$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = :'pub_name') THEN
-        EXECUTE format('CREATE PUBLICATION %I FOR TABLES IN SCHEMA public', :'pub_name');
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = '${PUB_NAME}') THEN
+        EXECUTE format('CREATE PUBLICATION %I FOR TABLES IN SCHEMA public', '${PUB_NAME}');
     END IF;
 END
-$$;
+\$\$;
 EOSQL
 echo "Created publication: $PUB_NAME"
 
@@ -195,35 +200,33 @@ for node in $nodes; do
 
   # 2. Ensure Remote Slot Exists (Idempotent)
   echo "Ensuring replication slot '$sub_name' exists on publisher '$node' ($node_host)..."
-  psql -h "$node_host" -U "$POSTGRES_USER" -d "$DB_NAME" -v slot_name="$sub_name" <<'EOSQL'
-DO $$
+  psql -h "$node_host" -U "$POSTGRES_USER" -d "$DB_NAME" <<EOSQL
+DO \$\$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = :'slot_name') THEN
-        PERFORM pg_create_logical_replication_slot(:'slot_name', 'pgoutput');
+    IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '${sub_name}') THEN
+        PERFORM pg_create_logical_replication_slot('${sub_name}', 'pgoutput');
     END IF;
 END
-$$;
+\$\$;
 EOSQL
 
   # 3. Create Local Subscription (Idempotent)
   echo "Configuring local subscription '$sub_name'..."
   CONN_STRING="host=$node_host dbname=$DB_NAME user=$POSTGRES_USER password=$POSTGRES_PASSWORD"
-  psql -U "$POSTGRES_USER" -d "$DB_NAME" \
-    -v sub_name="$sub_name" \
-    -v conn_string="$CONN_STRING" \
-    -v pub_name="$pub_name" <<'EOSQL'
-DO $$
+  CONN_STRING_ESCAPED=$(escape_sql_literal "$CONN_STRING")
+  psql -U "$POSTGRES_USER" -d "$DB_NAME" <<EOSQL
+DO \$\$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_subscription WHERE subname = :'sub_name') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_subscription WHERE subname = '${sub_name}') THEN
         EXECUTE format(
             'CREATE SUBSCRIPTION %I CONNECTION %L PUBLICATION %I WITH (create_slot = false, slot_name = %L, enabled = true, copy_data = false, origin = ''none'')',
-            :'sub_name', :'conn_string', :'pub_name', :'sub_name'
+            '${sub_name}', '${CONN_STRING_ESCAPED}', '${pub_name}', '${sub_name}'
         );
     ELSE
-        RAISE NOTICE 'Subscription % already exists, skipping.', :'sub_name';
+        RAISE NOTICE 'Subscription % already exists, skipping.', '${sub_name}';
     END IF;
 END
-$$;
+\$\$;
 EOSQL
 
   # Verify subscription status
