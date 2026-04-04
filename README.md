@@ -184,6 +184,33 @@ pgconverge setup-replication
 pgconverge setup-replication --node node_d
 ```
 
+### `pgconverge generate-hba`
+
+Generates `pg_hba.conf` entries for each node, allowing all other nodes in the cluster to connect.
+
+```bash
+pgconverge generate-hba
+pgconverge generate-hba --nodes prod-nodes.json
+pgconverge generate-hba --auth-method md5   # for PostgreSQL < 14
+```
+
+Output:
+
+```
+# --- mumbai (34.100.5.12) — add to pg_hba.conf ---
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+host    store           postgres        18.200.3.44/32          scram-sha-256
+host    store           postgres        35.177.8.90/32          scram-sha-256
+```
+
+Copy the relevant block to each server's `pg_hba.conf`, then reload: `SELECT pg_reload_conf();`
+
+Docker containers don't need this -- the default `postgres:16` image already allows all connections.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--auth-method` | `scram-sha-256` | Authentication method (`scram-sha-256`, `md5`) |
+
 ### `pgconverge status`
 
 Displays the health and replication state of all configured nodes.
@@ -427,6 +454,66 @@ New nodes joining a cluster get their initial data in one of two ways:
 
 - **Docker mode (entrypoint.sh)**: uses `pg_basebackup` to clone from the first available donor node. Subscriptions are created with `copy_data = false` since the clone already has all data
 - **CLI mode (setup-replication)**: subscriptions are created with `copy_data = true`, so PostgreSQL copies existing data from each publisher during initial sync
+
+## Deploying to External Nodes (Bastion Host)
+
+For production deployments with PostgreSQL instances running on separate servers (EC2, GCP, bare metal), you run pgconverge from a **bastion host** -- a small management machine that has network access to all database nodes.
+
+```
+  Bastion host (runs pgconverge)
+      │
+      ├── pgconverge apply-schema
+      ├── pgconverge setup-replication
+      ├── pgconverge status
+      │
+      ├──► mumbai     (34.100.5.12:5432)
+      ├──► frankfurt  (18.200.3.44:5432)
+      └──► london     (35.177.8.90:5432)
+```
+
+### Step-by-step
+
+**1. Prepare each PostgreSQL node**
+
+Each node needs `wal_level = logical` in `postgresql.conf` and must allow connections from the other nodes in `pg_hba.conf`. Generate the entries:
+
+```bash
+pgconverge generate-hba -n nodes.json
+```
+
+Apply the output to each node's `pg_hba.conf`, then reload: `SELECT pg_reload_conf();`
+
+**2. Set node identity on each node**
+
+```bash
+# Run on each node (or via psql from the bastion)
+ALTER DATABASE store SET pgconverge.node_name = 'mumbai';
+```
+
+This ensures replication workers inherit the node name for conflict resolution tiebreaking.
+
+**3. Apply schema and set up replication from the bastion**
+
+```bash
+pgconverge apply-schema -n nodes.json
+pgconverge setup-replication -n nodes.json
+pgconverge status -n nodes.json
+```
+
+The `host` in `nodes.json` must be an address that the bastion **and** the nodes can reach each other on. Use private VPC IPs if all nodes are in the same VPC, or public IPs if they're across regions.
+
+### Important: inter-node connectivity
+
+pgconverge connects to each node from the bastion to run SQL. But when it creates a subscription, the `CONNECTION` string is embedded in PostgreSQL -- the subscriber node itself connects to the publisher. This means the `host` value in `nodes.json` must be routable **between nodes**, not just from the bastion.
+
+```
+nodes.json host = 34.100.5.12
+                │
+                ├── Bastion → 34.100.5.12  ✓ (CLI connects)
+                └── London  → 34.100.5.12  ✓ (subscription connects)
+```
+
+If your bastion uses a different address to reach the nodes than the nodes use to reach each other (e.g., bastion goes through a load balancer), the subscription will fail. Use direct IPs.
 
 ## Requirements
 
