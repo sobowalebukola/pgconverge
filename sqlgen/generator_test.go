@@ -200,8 +200,210 @@ func TestGenerateSQL_ConflictTriggerEnableAlways(t *testing.T) {
 	if !strings.Contains(sql, `ENABLE ALWAYS TRIGGER conflict_resolution_orders`) {
 		t.Error("conflict resolution trigger must use ENABLE ALWAYS to fire during replication")
 	}
-	// set_updated_at should NOT be ENABLE ALWAYS (must not re-stamp replicated rows)
 	if strings.Contains(sql, `ENABLE ALWAYS TRIGGER set_updated_at_orders`) {
 		t.Error("set_updated_at trigger should NOT use ENABLE ALWAYS")
+	}
+}
+
+// --- CRDT / HLC Tests ---
+
+func TestGenerateSQL_NoCRDT_NoHLCInfrastructure(t *testing.T) {
+	tables := map[string]schema.Table{
+		"items": {
+			Name: "items",
+			Columns: map[string]schema.Column{
+				"name": {Name: "name", DataType: "text"},
+			},
+		},
+	}
+
+	sql := GenerateSQL(tables)
+
+	if strings.Contains(sql, "_pgconverge") {
+		t.Error("HLC infrastructure should NOT be generated when no table has CRDT enabled")
+	}
+	if strings.Contains(sql, "_hlc_ts") {
+		t.Error("HLC columns should NOT be present on non-CRDT tables")
+	}
+}
+
+func TestGenerateSQL_CRDT_HLCInfrastructure(t *testing.T) {
+	tables := map[string]schema.Table{
+		"events": {
+			Name: "events",
+			Columns: map[string]schema.Column{
+				"data": {Name: "data", DataType: "jsonb"},
+			},
+			CRDT: &schema.CRDTConfig{Enabled: true},
+		},
+	}
+
+	sql := GenerateSQL(tables)
+
+	if !strings.Contains(sql, "CREATE SCHEMA IF NOT EXISTS _pgconverge") {
+		t.Error("expected _pgconverge schema")
+	}
+	if !strings.Contains(sql, "_pgconverge.hlc_state") {
+		t.Error("expected hlc_state table")
+	}
+	if !strings.Contains(sql, "_pgconverge.advance_hlc") {
+		t.Error("expected advance_hlc function")
+	}
+}
+
+func TestGenerateSQL_CRDT_HLCColumns(t *testing.T) {
+	tables := map[string]schema.Table{
+		"orders": {
+			Name: "orders",
+			Columns: map[string]schema.Column{
+				"total": {Name: "total", DataType: "numeric"},
+			},
+			CRDT: &schema.CRDTConfig{Enabled: true},
+		},
+	}
+
+	sql := GenerateSQL(tables)
+
+	if !strings.Contains(sql, `"_hlc_ts" BIGINT DEFAULT 0`) {
+		t.Error("expected _hlc_ts column")
+	}
+	if !strings.Contains(sql, `"_hlc_counter" INTEGER DEFAULT 0`) {
+		t.Error("expected _hlc_counter column")
+	}
+	if !strings.Contains(sql, `"_hlc_node" VARCHAR(50) DEFAULT ''`) {
+		t.Error("expected _hlc_node column")
+	}
+	// Should still have updated_at for readability
+	if !strings.Contains(sql, `"updated_at" TIMESTAMP DEFAULT now()`) {
+		t.Error("CRDT tables should still have updated_at for readability")
+	}
+}
+
+func TestGenerateSQL_CRDT_HLCTriggers(t *testing.T) {
+	tables := map[string]schema.Table{
+		"orders": {
+			Name: "orders",
+			Columns: map[string]schema.Column{
+				"total": {Name: "total", DataType: "numeric"},
+			},
+			CRDT: &schema.CRDTConfig{Enabled: true},
+		},
+	}
+
+	sql := GenerateSQL(tables)
+
+	// HLC stamping trigger (local writes only)
+	if !strings.Contains(sql, "orders_stamp_hlc()") {
+		t.Error("expected HLC stamping function")
+	}
+	if !strings.Contains(sql, "a_stamp_hlc_orders") {
+		t.Error("expected HLC stamping trigger")
+	}
+
+	// Should NOT have the old set_updated_at trigger
+	if strings.Contains(sql, "orders_set_updated_at()") {
+		t.Error("CRDT tables should NOT have set_updated_at, should use stamp_hlc instead")
+	}
+
+	// Conflict resolution uses HLC comparison
+	if !strings.Contains(sql, "NEW._hlc_ts") {
+		t.Error("expected HLC-based conflict resolution")
+	}
+	if !strings.Contains(sql, "advance_hlc(NEW._hlc_ts, NEW._hlc_counter)") {
+		t.Error("expected conflict trigger to advance local HLC on incoming writes")
+	}
+
+	// ENABLE ALWAYS on conflict trigger
+	if !strings.Contains(sql, "ENABLE ALWAYS TRIGGER z_resolve_conflict_orders") {
+		t.Error("conflict resolution trigger must use ENABLE ALWAYS")
+	}
+
+	// Stamping trigger should NOT be ENABLE ALWAYS
+	if strings.Contains(sql, "ENABLE ALWAYS TRIGGER a_stamp_hlc_orders") {
+		t.Error("HLC stamping trigger should NOT use ENABLE ALWAYS")
+	}
+}
+
+func TestGenerateSQL_CRDT_HLCTupleComparison(t *testing.T) {
+	tables := map[string]schema.Table{
+		"data": {
+			Name: "data",
+			Columns: map[string]schema.Column{
+				"value": {Name: "value", DataType: "text"},
+			},
+			CRDT: &schema.CRDTConfig{Enabled: true},
+		},
+	}
+
+	sql := GenerateSQL(tables)
+
+	// Must compare full HLC tuple (ts, counter, node) for total ordering
+	if !strings.Contains(sql, "(NEW._hlc_ts, NEW._hlc_counter, NEW._hlc_node) > (OLD._hlc_ts, OLD._hlc_counter, OLD._hlc_node)") {
+		t.Error("expected HLC tuple comparison for total ordering")
+	}
+
+	// Should NOT use timestamp-based comparison
+	if strings.Contains(sql, "NEW.updated_at > OLD.updated_at") {
+		t.Error("CRDT tables should NOT use timestamp-based conflict resolution")
+	}
+}
+
+func TestGenerateSQL_MixedCRDTAndNonCRDT(t *testing.T) {
+	tables := map[string]schema.Table{
+		"crdt_table": {
+			Name: "crdt_table",
+			Columns: map[string]schema.Column{
+				"data": {Name: "data", DataType: "text"},
+			},
+			CRDT: &schema.CRDTConfig{Enabled: true},
+		},
+		"normal_table": {
+			Name: "normal_table",
+			Columns: map[string]schema.Column{
+				"info": {Name: "info", DataType: "text"},
+			},
+		},
+	}
+
+	sql := GenerateSQL(tables)
+
+	// HLC infrastructure should be present (at least one CRDT table)
+	if !strings.Contains(sql, "_pgconverge.hlc_state") {
+		t.Error("HLC infrastructure should be present when at least one table uses CRDT")
+	}
+
+	// CRDT table uses HLC triggers
+	if !strings.Contains(sql, "a_stamp_hlc_crdt_table") {
+		t.Error("CRDT table should have HLC stamping trigger")
+	}
+
+	// Normal table uses LWW triggers
+	if !strings.Contains(sql, "normal_table_set_updated_at") {
+		t.Error("non-CRDT table should have set_updated_at trigger")
+	}
+}
+
+func TestAnyCRDTEnabled(t *testing.T) {
+	noCRDT := map[string]schema.Table{
+		"a": {Name: "a"},
+		"b": {Name: "b"},
+	}
+	if anyCRDTEnabled(noCRDT) {
+		t.Error("expected false when no tables have CRDT")
+	}
+
+	withCRDT := map[string]schema.Table{
+		"a": {Name: "a"},
+		"b": {Name: "b", CRDT: &schema.CRDTConfig{Enabled: true}},
+	}
+	if !anyCRDTEnabled(withCRDT) {
+		t.Error("expected true when at least one table has CRDT")
+	}
+
+	disabledCRDT := map[string]schema.Table{
+		"a": {Name: "a", CRDT: &schema.CRDTConfig{Enabled: false}},
+	}
+	if anyCRDTEnabled(disabledCRDT) {
+		t.Error("expected false when CRDT is present but disabled")
 	}
 }

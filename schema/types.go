@@ -27,12 +27,24 @@ type Constraints struct {
 	ForeignKeys []ForeignKey `json:"foreign_keys"`
 }
 
+// ColumnCRDT defines the CRDT strategy for a single column.
+type ColumnCRDT struct {
+	Type string `json:"type"` // "lww_field", "pn_counter"
+}
+
+// CRDTConfig defines the CRDT strategy for a table.
+type CRDTConfig struct {
+	Enabled bool                   `json:"enabled"`
+	Columns map[string]ColumnCRDT  `json:"columns,omitempty"`
+}
+
 // Table represents a database table definition.
 type Table struct {
 	Name        string            `json:"name"`
 	Columns     map[string]Column `json:"columns"`
 	Constraints Constraints       `json:"constraints"`
 	Indexes     [][]string        `json:"indexes"`
+	CRDT        *CRDTConfig       `json:"crdt,omitempty"`
 }
 
 // Node represents a PostgreSQL node configuration.

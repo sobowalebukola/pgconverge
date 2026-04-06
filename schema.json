@@ -2,7 +2,8 @@
   "users": {
     "name": "users",
     "columns": {
-      "id": { "name": "id", "data_type": "serial" },
+      "id": { "name": "id", "data_type": "uuid" },
+      "name": { "name": "name", "data_type": "varchar(100)" },
       "email": { "name": "email", "data_type": "varchar(150)" }
     },
     "constraints": {
@@ -14,20 +15,16 @@
   "orders": {
     "name": "orders",
     "columns": {
-      "id": { "name": "id", "data_type": "serial" },
-      "user_id": { "name": "user_id", "data_type": "int" },
+      "id": { "name": "id", "data_type": "uuid" },
+      "customer": { "name": "customer", "data_type": "varchar(100)" },
       "amount": { "name": "amount", "data_type": "numeric(10,2)" },
-      "created_at": { "name": "created_at", "data_type": "timestamp" }
+      "status": { "name": "status", "data_type": "varchar(20)", "default": "'pending'" }
     },
     "constraints": {
-      "primary": ["id"],
-      "foreign": [
-        {
-          "columns": ["user_id"],
-          "references": { "table": "users", "columns": ["id"] }
-        }
-      ]
+      "primary": ["id"]
     },
-    "indexes": [["user_id"], ["created_at"]]
+    "crdt": {
+      "enabled": true
+    }
   }
 }

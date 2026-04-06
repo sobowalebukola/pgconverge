@@ -14,7 +14,7 @@ pgconverge sets up a **full-mesh multi-master** replication topology. Every node
      +--> node_c <---+
 ```
 
-Under the hood, it uses PostgreSQL's built-in **logical replication** (publications and subscriptions). Conflicts are resolved with a **last-write-wins** strategy based on the `updated_at` timestamp. Primary keys defined as `serial` are automatically converted to **UUIDs** to avoid cross-node collisions.
+Under the hood, it uses PostgreSQL's built-in **logical replication** (publications and subscriptions). Conflicts are resolved using either a simple **last-write-wins** strategy (based on `updated_at` timestamps) or a **Hybrid Logical Clock (HLC)** for tables that opt into CRDT mode. Primary keys defined as `serial` are automatically converted to **UUIDs** to avoid cross-node collisions.
 
 ### What Gets Generated
 
@@ -114,7 +114,10 @@ Create a `schema.json` file with your table definitions:
         }
       ]
     },
-    "indexes": [["user_id"], ["created_at"]]
+    "indexes": [["user_id"], ["created_at"]],
+    "crdt": {
+      "enabled": true
+    }
   }
 }
 ```
@@ -181,6 +184,33 @@ pgconverge setup-replication
 pgconverge setup-replication --node node_d
 ```
 
+### `pgconverge generate-hba`
+
+Generates `pg_hba.conf` entries for each node, allowing all other nodes in the cluster to connect.
+
+```bash
+pgconverge generate-hba
+pgconverge generate-hba --nodes prod-nodes.json
+pgconverge generate-hba --auth-method md5   # for PostgreSQL < 14
+```
+
+Output:
+
+```
+# --- mumbai (34.100.5.12) — add to pg_hba.conf ---
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+host    store           postgres        18.200.3.44/32          scram-sha-256
+host    store           postgres        35.177.8.90/32          scram-sha-256
+```
+
+Copy the relevant block to each server's `pg_hba.conf`, then reload: `SELECT pg_reload_conf();`
+
+Docker containers don't need this -- the default `postgres:16` image already allows all connections.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--auth-method` | `scram-sha-256` | Authentication method (`scram-sha-256`, `md5`) |
+
 ### `pgconverge status`
 
 Displays the health and replication state of all configured nodes.
@@ -246,7 +276,13 @@ A map of table name to table definition:
         }
       ]
     },
-    "indexes": [["col_a"], ["col_b", "col_c"]]
+    "indexes": [["col_a"], ["col_b", "col_c"]],
+    "crdt": {
+      "enabled": true,
+      "columns": {
+        "col_name": { "type": "lww_field" }
+      }
+    }
   }
 }
 ```
@@ -254,10 +290,17 @@ A map of table name to table definition:
 **Automatic transformations applied during SQL generation:**
 
 - `serial` primary keys are converted to `uuid` with `gen_random_uuid()` default (prevents cross-node ID collisions)
-- An `updated_at TIMESTAMP DEFAULT now()` column is added to every table (used for conflict resolution)
+- An `updated_at TIMESTAMP DEFAULT now()` column is added to every table
 - An `origin_node VARCHAR(50)` column is added to every table (tracks which node originated the row)
 - `REPLICA IDENTITY FULL` is set on every table (required for logical replication)
 - A conflict resolution trigger is created for each table (last-write-wins based on `updated_at`)
+
+**Additional transformations for CRDT-enabled tables** (tables with `"crdt": {"enabled": true}`):
+
+- `_hlc_ts BIGINT`, `_hlc_counter INTEGER`, and `_hlc_node VARCHAR(50)` columns are added for HLC tracking
+- A shared `_pgconverge` schema is created with the HLC state table and `advance_hlc()` function
+- Conflict resolution uses the HLC tuple `(ts, counter, node)` instead of `updated_at` for deterministic total ordering
+- An HLC stamping trigger (`a_stamp_hlc`) sets the clock values on local writes; a conflict resolution trigger (`z_resolve_conflict`) compares HLC tuples on all writes including replicated ones. Triggers are alphabetically prefixed to ensure correct execution order
 
 ### Password Management
 
@@ -377,7 +420,11 @@ node_c publishes  -> node_b subscribes (sub_node_b_from_node_c)
 
 ### Conflict Resolution
 
-When the same row is updated on two nodes simultaneously, the **last-write-wins** strategy applies:
+pgconverge supports two conflict resolution strategies, configurable per table:
+
+#### Timestamp-based Last-Write-Wins (default)
+
+For tables **without** CRDT enabled:
 
 - Every table has an `updated_at` column set to `NOW()` on each write
 - A `BEFORE UPDATE` trigger compares the incoming `updated_at` with the stored value
@@ -385,12 +432,88 @@ When the same row is updated on two nodes simultaneously, the **last-write-wins*
 
 This means the node whose write happened later (by wall-clock time) wins. For this to work reliably, **node clocks should be synchronized** (e.g., via NTP).
 
+#### Hybrid Logical Clock (HLC) -- CRDT mode
+
+For tables with `"crdt": {"enabled": true}`:
+
+HLC combines physical wall-clock time with a logical counter to provide **causally consistent, deterministic ordering** without requiring perfectly synchronized clocks. Each write is stamped with an HLC tuple `(timestamp, counter, node_name)`:
+
+1. **Local writes**: the `a_stamp_hlc` trigger calls `_pgconverge.advance_hlc()` to advance the clock and stamps the row with the new HLC values. This trigger runs only for local writes (skipped by replication apply workers).
+2. **Replicated writes**: arrive with the origin node's HLC values already set. The `z_resolve_conflict` trigger (set to `ENABLE ALWAYS`) fires on all writes including replicated ones, and advances the local HLC to track the incoming timestamp for causal ordering.
+3. **Conflict resolution**: the HLC tuple `(ts, counter, node_name)` is compared lexicographically. The write with the higher tuple wins; the lower one is discarded.
+
+Trigger names are alphabetically prefixed (`a_`, `z_`) because PostgreSQL fires `BEFORE` triggers in alphabetical order -- stamping must happen before conflict resolution.
+
+This gives a **total ordering** across all nodes. Since the node name acts as a tiebreaker, concurrent writes with identical physical timestamps are resolved deterministically rather than arbitrarily.
+
+**Node identity** is propagated via the `pgconverge.node_name` PostgreSQL GUC, set at the database level so all sessions (including replication apply workers) inherit it.
+
 ### Data Bootstrapping
 
 New nodes joining a cluster get their initial data in one of two ways:
 
 - **Docker mode (entrypoint.sh)**: uses `pg_basebackup` to clone from the first available donor node. Subscriptions are created with `copy_data = false` since the clone already has all data
 - **CLI mode (setup-replication)**: subscriptions are created with `copy_data = true`, so PostgreSQL copies existing data from each publisher during initial sync
+
+## Deploying to External Nodes (Bastion Host)
+
+For production deployments with PostgreSQL instances running on separate servers (EC2, GCP, bare metal), you run pgconverge from a **bastion host** -- a small management machine that has network access to all database nodes.
+
+```
+  Bastion host (runs pgconverge)
+      │
+      ├── pgconverge apply-schema
+      ├── pgconverge setup-replication
+      ├── pgconverge status
+      │
+      ├──► mumbai     (34.100.5.12:5432)
+      ├──► frankfurt  (18.200.3.44:5432)
+      └──► london     (35.177.8.90:5432)
+```
+
+### Step-by-step
+
+**1. Prepare each PostgreSQL node**
+
+Each node needs `wal_level = logical` in `postgresql.conf` and must allow connections from the other nodes in `pg_hba.conf`. Generate the entries:
+
+```bash
+pgconverge generate-hba -n nodes.json
+```
+
+Apply the output to each node's `pg_hba.conf`, then reload: `SELECT pg_reload_conf();`
+
+**2. Set node identity on each node**
+
+```bash
+# Run on each node (or via psql from the bastion)
+ALTER DATABASE store SET pgconverge.node_name = 'mumbai';
+```
+
+This ensures replication workers inherit the node name for conflict resolution tiebreaking.
+
+**3. Apply schema and set up replication from the bastion**
+
+```bash
+pgconverge apply-schema -n nodes.json
+pgconverge setup-replication -n nodes.json
+pgconverge status -n nodes.json
+```
+
+The `host` in `nodes.json` must be an address that the bastion **and** the nodes can reach each other on. Use private VPC IPs if all nodes are in the same VPC, or public IPs if they're across regions.
+
+### Important: inter-node connectivity
+
+pgconverge connects to each node from the bastion to run SQL. But when it creates a subscription, the `CONNECTION` string is embedded in PostgreSQL -- the subscriber node itself connects to the publisher. This means the `host` value in `nodes.json` must be routable **between nodes**, not just from the bastion.
+
+```
+nodes.json host = 34.100.5.12
+                │
+                ├── Bastion → 34.100.5.12  ✓ (CLI connects)
+                └── London  → 34.100.5.12  ✓ (subscription connects)
+```
+
+If your bastion uses a different address to reach the nodes than the nodes use to reach each other (e.g., bastion goes through a load balancer), the subscription will fail. Use direct IPs.
 
 ## Requirements
 
