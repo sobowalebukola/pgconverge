@@ -1,5 +1,12 @@
 # pgconverge
 
+[![CI](https://github.com/sobowalebukola/pgconverge/actions/workflows/ci.yml/badge.svg)](https://github.com/sobowalebukola/pgconverge/actions/workflows/ci.yml)
+[![Lint](https://github.com/sobowalebukola/pgconverge/actions/workflows/lint.yml/badge.svg)](https://github.com/sobowalebukola/pgconverge/actions/workflows/lint.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sobowalebukola/pgconverge.svg)](https://pkg.go.dev/github.com/sobowalebukola/pgconverge)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sobowalebukola/pgconverge)](https://goreportcard.com/report/github.com/sobowalebukola/pgconverge)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/sobowalebukola/pgconverge)](https://github.com/sobowalebukola/pgconverge)
+
 A Go CLI tool and library for setting up and managing **bidirectional PostgreSQL logical replication** across multiple nodes. Define your nodes and schema in JSON, and pgconverge generates the SQL, Docker infrastructure, and replication topology automatically.
 
 ## How It Works
