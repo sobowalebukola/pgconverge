@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"os"
 	"testing"
 )
 
@@ -53,8 +52,7 @@ func TestConnectionString_DefaultPort(t *testing.T) {
 func TestResolvePassword_FromEnv(t *testing.T) {
 	n := Node{Name: "node_a", Password: "json_pass"}
 
-	os.Setenv("PGCONVERGE_NODE_A_PASSWORD", "env_pass")
-	defer os.Unsetenv("PGCONVERGE_NODE_A_PASSWORD")
+	t.Setenv("PGCONVERGE_NODE_A_PASSWORD", "env_pass")
 
 	got := n.ResolvePassword()
 	if got != "env_pass" {
@@ -66,7 +64,7 @@ func TestResolvePassword_FallbackToJSON(t *testing.T) {
 	n := Node{Name: "node_b", Password: "json_pass"}
 
 	// Ensure env var is not set
-	os.Unsetenv("PGCONVERGE_NODE_B_PASSWORD")
+	t.Setenv("PGCONVERGE_NODE_B_PASSWORD", "")
 
 	got := n.ResolvePassword()
 	if got != "json_pass" {
@@ -84,8 +82,7 @@ func TestConnectionString_UsesEnvPassword(t *testing.T) {
 		Password: "old_pass",
 	}
 
-	os.Setenv("PGCONVERGE_NODE_C_PASSWORD", "env_secret")
-	defer os.Unsetenv("PGCONVERGE_NODE_C_PASSWORD")
+	t.Setenv("PGCONVERGE_NODE_C_PASSWORD", "env_secret")
 
 	got := n.ConnectionString()
 	expected := "host=localhost port=5432 dbname=db user=postgres password=env_secret sslmode=disable"

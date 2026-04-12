@@ -30,7 +30,7 @@ func (m *DBManager) ApplySchema(ctx context.Context, node *schema.Node, schemaSQ
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction on %s: %w", node.Name, err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Set for the current session so schema creation functions can use it
 	_, err = tx.Exec(ctx, fmt.Sprintf(

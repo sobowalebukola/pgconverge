@@ -163,35 +163,35 @@ func writeTableDDL(sb *strings.Builder, table schema.Table) {
 		))
 	}
 
-	sb.WriteString(fmt.Sprintf(
+	fmt.Fprintf(sb,
 		`CREATE TABLE IF NOT EXISTS "%s" (%s);`,
 		table.Name,
 		strings.Join(append(cols, constraints...), ",\n  "),
-	))
+	)
 }
 
 // writeTableIndexes emits CREATE INDEX statements.
 func writeTableIndexes(sb *strings.Builder, table schema.Table) {
 	for _, idxCols := range table.Indexes {
 		idxName := fmt.Sprintf("%s_%s_idx", table.Name, strings.Join(idxCols, "_"))
-		sb.WriteString(fmt.Sprintf(
+		fmt.Fprintf(sb,
 			`CREATE INDEX IF NOT EXISTS "%s" ON "%s" (%s);`,
 			idxName,
 			table.Name,
 			util.QuoteCols(idxCols),
-		))
+		)
 	}
 }
 
 // writeReplicaIdentity emits ALTER TABLE ... REPLICA IDENTITY FULL.
 func writeReplicaIdentity(sb *strings.Builder, table schema.Table) {
-	sb.WriteString(fmt.Sprintf("\nALTER TABLE \"%s\" REPLICA IDENTITY FULL;\n", table.Name))
+	fmt.Fprintf(sb, "\nALTER TABLE \"%s\" REPLICA IDENTITY FULL;\n", table.Name)
 }
 
 // writeLWWTriggers emits timestamp-based last-write-wins triggers (non-CRDT fallback).
 func writeLWWTriggers(sb *strings.Builder, table schema.Table) {
 	q := fmt.Sprintf(`"%s"`, table.Name)
-	sb.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(sb, `
 CREATE OR REPLACE FUNCTION %s_set_updated_at() RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -227,13 +227,13 @@ ALTER TABLE %s ENABLE ALWAYS TRIGGER conflict_resolution_%s;
 		table.Name,
 		table.Name, q, table.Name,
 		q, table.Name,
-	))
+	)
 }
 
 // writeHLCTriggers emits HLC-based conflict resolution triggers for CRDT-enabled tables.
 func writeHLCTriggers(sb *strings.Builder, table schema.Table) {
 	q := fmt.Sprintf(`"%s"`, table.Name)
-	sb.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(sb, `
 -- HLC stamping: only fires on local writes (normal trigger, skipped by replication workers)
 CREATE OR REPLACE FUNCTION %s_stamp_hlc() RETURNS TRIGGER AS $$
 DECLARE
@@ -283,7 +283,7 @@ ALTER TABLE %s ENABLE ALWAYS TRIGGER z_resolve_conflict_%s;
 		table.Name,
 		table.Name, q, table.Name,
 		q, table.Name,
-	))
+	)
 }
 
 // Generate reads schema from a file and writes SQL to output file.
