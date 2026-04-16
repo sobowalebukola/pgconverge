@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sobowalebukola/pgconverge/schema"
 )
 
@@ -84,63 +85,78 @@ func (m *DBManager) GetNodeStatus(ctx context.Context, node *schema.Node) NodeSt
 	}
 
 	// Get publications
-	pubRows, err := pool.Query(ctx, "SELECT pubname, puballtables FROM pg_publication")
+	status.Publications, err = queryPublications(ctx, pool)
 	if err != nil {
-		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query publications: %v", err))
-	} else {
-		defer pubRows.Close()
-		for pubRows.Next() {
-			var pub PublicationInfo
-			if err := pubRows.Scan(&pub.Name, &pub.AllTables); err != nil {
-				status.Warnings = append(status.Warnings, fmt.Sprintf("failed to scan publication: %v", err))
-				continue
-			}
-			status.Publications = append(status.Publications, pub)
-		}
-		if err := pubRows.Err(); err != nil {
-			status.Warnings = append(status.Warnings, fmt.Sprintf("error iterating publications: %v", err))
-		}
+		status.Warnings = append(status.Warnings, err.Error())
 	}
 
 	// Get subscriptions
-	subRows, err := pool.Query(ctx, "SELECT subname, subenabled, subslotname FROM pg_subscription")
+	status.Subscriptions, err = querySubscriptions(ctx, pool)
 	if err != nil {
-		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query subscriptions: %v", err))
-	} else {
-		defer subRows.Close()
-		for subRows.Next() {
-			var sub SubscriptionInfo
-			if err := subRows.Scan(&sub.Name, &sub.Enabled, &sub.SlotName); err != nil {
-				status.Warnings = append(status.Warnings, fmt.Sprintf("failed to scan subscription: %v", err))
-				continue
-			}
-			status.Subscriptions = append(status.Subscriptions, sub)
-		}
-		if err := subRows.Err(); err != nil {
-			status.Warnings = append(status.Warnings, fmt.Sprintf("error iterating subscriptions: %v", err))
-		}
+		status.Warnings = append(status.Warnings, err.Error())
 	}
 
 	// Get replication slots
-	slotRows, err := pool.Query(ctx, "SELECT slot_name, slot_type, active FROM pg_replication_slots")
+	status.ReplicationSlots, err = queryReplicationSlots(ctx, pool)
 	if err != nil {
-		status.Warnings = append(status.Warnings, fmt.Sprintf("failed to query replication slots: %v", err))
-	} else {
-		defer slotRows.Close()
-		for slotRows.Next() {
-			var slot ReplicationSlotInfo
-			if err := slotRows.Scan(&slot.Name, &slot.SlotType, &slot.Active); err != nil {
-				status.Warnings = append(status.Warnings, fmt.Sprintf("failed to scan replication slot: %v", err))
-				continue
-			}
-			status.ReplicationSlots = append(status.ReplicationSlots, slot)
-		}
-		if err := slotRows.Err(); err != nil {
-			status.Warnings = append(status.Warnings, fmt.Sprintf("error iterating replication slots: %v", err))
-		}
+		status.Warnings = append(status.Warnings, err.Error())
 	}
 
 	return status
+}
+
+func queryPublications(ctx context.Context, pool *pgxpool.Pool) ([]PublicationInfo, error) {
+	rows, err := pool.Query(ctx, "SELECT pubname, puballtables FROM pg_publication")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query publications: %w", err)
+	}
+	defer rows.Close()
+
+	var pubs []PublicationInfo
+	for rows.Next() {
+		var pub PublicationInfo
+		if err := rows.Scan(&pub.Name, &pub.AllTables); err != nil {
+			return pubs, fmt.Errorf("failed to scan publication: %w", err)
+		}
+		pubs = append(pubs, pub)
+	}
+	return pubs, rows.Err()
+}
+
+func querySubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]SubscriptionInfo, error) {
+	rows, err := pool.Query(ctx, "SELECT subname, subenabled, subslotname FROM pg_subscription")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []SubscriptionInfo
+	for rows.Next() {
+		var sub SubscriptionInfo
+		if err := rows.Scan(&sub.Name, &sub.Enabled, &sub.SlotName); err != nil {
+			return subs, fmt.Errorf("failed to scan subscription: %w", err)
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+func queryReplicationSlots(ctx context.Context, pool *pgxpool.Pool) ([]ReplicationSlotInfo, error) {
+	rows, err := pool.Query(ctx, "SELECT slot_name, slot_type, active FROM pg_replication_slots")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query replication slots: %w", err)
+	}
+	defer rows.Close()
+
+	var slots []ReplicationSlotInfo
+	for rows.Next() {
+		var slot ReplicationSlotInfo
+		if err := rows.Scan(&slot.Name, &slot.SlotType, &slot.Active); err != nil {
+			return slots, fmt.Errorf("failed to scan replication slot: %w", err)
+		}
+		slots = append(slots, slot)
+	}
+	return slots, rows.Err()
 }
 
 // GetAllNodeStatuses returns the status of all nodes.

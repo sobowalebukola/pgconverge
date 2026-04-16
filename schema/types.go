@@ -34,8 +34,8 @@ type ColumnCRDT struct {
 
 // CRDTConfig defines the CRDT strategy for a table.
 type CRDTConfig struct {
-	Enabled bool                   `json:"enabled"`
-	Columns map[string]ColumnCRDT  `json:"columns,omitempty"`
+	Enabled bool                  `json:"enabled"`
+	Columns map[string]ColumnCRDT `json:"columns,omitempty"`
 }
 
 // Table represents a database table definition.
