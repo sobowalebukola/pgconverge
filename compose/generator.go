@@ -2,6 +2,7 @@
 package compose
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"github.com/sobowalebukola/pgconverge/util"
 	"gopkg.in/yaml.v3"
 )
+
+var EntrypointScript []byte
 
 // GenerateComposeMap generates a Docker Compose configuration map from nodes.
 func GenerateComposeMap(nodes []schema.Node) map[string]interface{} {

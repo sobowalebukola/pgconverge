@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/sobowalebukola/pgconverge/compose"
 	"github.com/sobowalebukola/pgconverge/sqlgen"
@@ -28,6 +29,12 @@ var generateCmd = &cobra.Command{
 			return fmt.Errorf("failed to generate docker-compose.yml: %w", err)
 		}
 		fmt.Println("docker-compose.yml generated")
+
+		// Write the entrypoint script needed by docker-compose
+		if err := os.WriteFile("entrypoint.sh", compose.EntrypointScript, 0755); err != nil {
+			return fmt.Errorf("failed to write entrypoint.sh: %w", err)
+		}
+		fmt.Println("entrypoint.sh generated")
 
 		return nil
 	},
