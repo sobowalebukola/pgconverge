@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+//go:embed entrypoint.sh
 var EntrypointScript []byte
 
 // GenerateComposeMap generates a Docker Compose configuration map from nodes.
