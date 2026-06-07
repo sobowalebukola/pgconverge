@@ -8,10 +8,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var applySchemaNode string
+var (
+	applySchemaNode string
+	applySchemaFile string
+)
 
 func init() {
 	applySchemaCmd.Flags().StringVar(&applySchemaNode, "node", "", "Apply schema to specific node only")
+	applySchemaCmd.Flags().StringVarP(&applySchemaFile, "schema", "s", "generated.sql", "Path to SQL file to apply")
 	rootCmd.AddCommand(applySchemaCmd)
 }
 
@@ -37,14 +41,14 @@ var applySchemaCmd = &cobra.Command{
 			}
 
 			fmt.Printf("Applying schema to %s...\n", node.Name)
-			if err := manager.ApplySchemaFromFile(ctx, node, SchemaFile); err != nil {
+			if err := manager.ApplySchemaFromFile(ctx, node, applySchemaFile); err != nil {
 				return fmt.Errorf("failed to apply schema to %s: %w", node.Name, err)
 			}
 			fmt.Printf("Schema applied successfully to %s\n", node.Name)
 		} else {
 			// Apply to all nodes
 			fmt.Println("Applying schema to all nodes...")
-			errors := manager.ApplySchemaFromFileToAll(ctx, SchemaFile)
+			errors := manager.ApplySchemaFromFileToAll(ctx, applySchemaFile)
 
 			hasErrors := false
 			for nodeName, err := range errors {

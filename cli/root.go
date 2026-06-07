@@ -14,8 +14,6 @@ import (
 var (
 	// NodesFile is the path to the nodes configuration file.
 	NodesFile string
-	// SchemaFile is the path to the schema SQL file.
-	SchemaFile string
 
 	rootCmd = &cobra.Command{
 		Use:   "pgconverge",
@@ -27,7 +25,6 @@ PostgreSQL logical replication across multiple nodes.`,
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&NodesFile, "nodes", "n", "nodes.json", "Path to nodes configuration file")
-	rootCmd.PersistentFlags().StringVarP(&SchemaFile, "schema", "s", "generated.sql", "Path to schema SQL file")
 }
 
 // Execute runs the root command.

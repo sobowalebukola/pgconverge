@@ -161,8 +161,13 @@ Generates `generated.sql` from `schema.json` and `docker-compose.yml` from `node
 
 ```bash
 pgconverge generate
-pgconverge generate --nodes custom-nodes.json --schema custom-output.sql
+pgconverge generate --nodes custom-nodes.json --schema custom-schema.json --out custom-output.sql
 ```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--schema` | `-s` | `schema.json` | Path to input schema JSON file |
+| `--out` | `-o` | `generated.sql` | Path to output SQL file |
 
 ### `pgconverge apply-schema`
 
@@ -232,7 +237,8 @@ pgconverge status --nodes nodes.json
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--nodes` | `-n` | `nodes.json` | Path to nodes configuration file |
-| `--schema` | `-s` | `generated.sql` | Path to schema SQL file |
+
+`--schema` is a per-command flag: on `generate` it is the input JSON (default `schema.json`); on `apply-schema` it is the SQL file to apply (default `generated.sql`).
 
 ## Configuration
 
